@@ -143,6 +143,12 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+SAP_env/
+
+# Datos
+shared_data/processed_logs.parquet
+shared_data/raw_logs.json
+
 
 # Spyder project settings
 .spyderproject
