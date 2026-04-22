@@ -26,7 +26,7 @@ def download_all_pages():
         print(f"Consultando página {current_page}...")
         
         params = {"page": current_page}
-        response = requests.get(API_URL, headers=headers, params=params)
+        response = requests.get(API_URL, headers=headers, params=params, timeout=30)
         
         if response.status_code != 200:
             print(f"Error {response.status_code}: {response.text}")

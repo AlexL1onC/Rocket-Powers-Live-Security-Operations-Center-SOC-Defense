@@ -14,35 +14,74 @@ def clean_and_convert_to_parquet(json_file_path, parquet_output_path):
     # 2. LIMPIEZA CRÍTICA
     print("Iniciando limpieza de datos...")
     
-    # Eliminar columnas totalmente vacías o irrelevantes (como _ignored o _score si son nulas)
-    cols_to_drop = [col for col in ["_ignored", "_score"] if col in df.columns]
-    df.drop(columns=cols_to_drop, inplace=True, errors='ignore')
-    
-    # Convertir timestamps a objetos datetime reales de Python
-    # Esto es vital para que SAP HANA lo reconozca como fecha y no como texto
-    date_cols = ["@timestamp", "@event_time_requested", "request_time_utc"]
+    # Convertir timestamps (Importante hacerlo antes del rename)
+    date_cols = ["@timestamp", "request_time_utc"]
     for col in date_cols:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce')
     
-    # Manejo de Nulos: 
-    # Para strings, mejor usar un texto vacío o 'N/A' para evitar errores en el modelo de IA
+    # Manejo de Nulos
     string_cols = df.select_dtypes(include=['object']).columns
     df[string_cols] = df[string_cols].fillna("Unknown")
     
-    # Para números (costos, tokens), llenar con 0
     numeric_cols = df.select_dtypes(include=['number']).columns
     df[numeric_cols] = df[numeric_cols].fillna(0)
+
+    # --- NUEVO PASO: MAPEO PARA SAP HANA ---
+    print("Estandarizando columnas para SAP HANA...")
     
-    # 3. OPTIMIZACIÓN DE TIPOS
-    # Reducir el tamaño de memoria convirtiendo columnas repetitivas en 'category'
-    categorical_candidates = ["llm_provider", "llm_status", "region_name", "sap_source_type"]
-    for col in categorical_candidates:
+    # Mapeamos los nombres del JSON (izquierda) a los de tu DDL en HANA (derecha)
+    column_mapping = {
+        "event_hash": "EVENT_HASH",
+        "request_time_utc": "REQUEST_TIME_UTC",
+        "client_ip": "CLIENT_IP",
+        "region_name": "REGION_NAME",
+        "service_id": "SERVICE_ID",
+        "llm_provider": "LLM_PROVIDER",
+        "llm_model_id": "LLM_MODEL_ID",
+        "llm_prompt_category": "LLM_PROMPT_CATEGORY",
+        "llm_prompt": "LLM_PROMPT",
+        "llm_total_tokens": "LLM_TOTAL_TOKENS",
+        "llm_response_time_ms": "LLM_RESPONSE_TIME_MS",
+        "llm_cost_usd": "LLM_COST_USD",
+        "llm_status": "LLM_STATUS",
+        "http_status_code": "HTTP_STATUS_CODE"
+    }
+    
+    # Renombramos las que existan
+    df.rename(columns=column_mapping, inplace=True)
+
+    # Creamos las columnas que falten como nulas para que el db_loader no truene
+    db_columns = [
+        "EVENT_HASH", "REQUEST_TIME_UTC", "HEADERS_CONTENT_TYPE", "CLIENT_IP", 
+        "REGION_NAME", "SERVICE_ID", "LLM_PROVIDER", "LLM_MODEL_ID", 
+        "LLM_PROMPT_CATEGORY", "LLM_PROMPT", "LLM_TOTAL_TOKENS", 
+        "LLM_RESPONSE_TIME_MS", "LLM_COST_USD", "LLM_STATUS", "HTTP_STATUS_CODE"
+    ]
+    
+    for col in db_columns:
+        if col not in df.columns:
+            df[col] = None
+    
+    # Aseguramos que HTTP_STATUS_CODE sea numérico
+    if "HTTP_STATUS_CODE" in df.columns:
+        # Convertimos a número, los errores se vuelven NaN, y luego los NaN se vuelven 0
+        df["HTTP_STATUS_CODE"] = pd.to_numeric(df["HTTP_STATUS_CODE"], errors='coerce').fillna(0).astype(int)
+
+    # Aseguramos que LLM_TOTAL_TOKENS y LLM_RESPONSE_TIME_MS también sean enteros
+    for col in ["LLM_TOTAL_TOKENS", "LLM_RESPONSE_TIME_MS"]:
         if col in df.columns:
-            df[col] = df[col].astype('category')
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+
+    # Y para los decimales (Costos)
+    if "LLM_COST_USD" in df.columns:
+        df["LLM_COST_USD"] = pd.to_numeric(df["LLM_COST_USD"], errors='coerce').fillna(0.0)
+
+    # Seleccionamos solo las columnas que van a la BD para el Parquet final
+    df = df[db_columns]
+    # ---------------------------------------
 
     # 4. EXPORTAR A PARQUET
-    # Usamos compresión 'snappy' que es el estándar balanceado entre velocidad y tamaño
     df.to_parquet(parquet_output_path, engine='pyarrow', compression='snappy', index=False)
     
     print(f"Conversión completada. Archivo guardado en: {parquet_output_path}")

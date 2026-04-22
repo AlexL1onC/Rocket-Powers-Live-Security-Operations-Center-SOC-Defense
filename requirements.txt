@@ -1,1 +1,9 @@
-pip install python-dotenv requests pandas pyarrow
+fastapi
+uvicorn
+apscheduler
+pandas
+pyarrow
+hdbcli
+cfenv
+python-dotenv
+requests  # <--- AGREGA ESTA LÍNEA
