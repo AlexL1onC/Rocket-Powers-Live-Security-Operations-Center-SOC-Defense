@@ -1,1 +1,25 @@
-pip install python-dotenv requests pandas pyarrow
+# Core
+numpy>=1.26
+pandas>=2.2
+
+# Visualización
+matplotlib>=3.8
+seaborn>=0.13
+
+# Machine Learning
+scikit-learn>=1.4
+
+# Time series (útil según enfoque)
+statsmodels>=0.14
+
+# Notebooks
+jupyter>=1.0
+ipykernel>=6.29
+
+# Utilidades
+pyyaml>=6.0
+tqdm>=4.66
+
+#models
+ripser
+torch
