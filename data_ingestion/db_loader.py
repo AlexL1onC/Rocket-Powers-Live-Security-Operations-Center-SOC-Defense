@@ -7,26 +7,40 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_hana_connection():
+    """Establece conexión usando cfenv para compatibilidad con SAP BTP."""
     env = AppEnv()
-    hana_service = env.get_service(label='hana')
-    
-    if not hana_service:
-        print("⚠️ VCAP_SERVICES no encontrado, usando variables locales...")
-        creds = {
-            'host': os.getenv("HANA_HOST"),
-            'port': os.getenv("HANA_PORT"),
-            'user': os.getenv("HANA_USER"),
-            'password': os.getenv("HANA_PASSWORD")
-        }
+    hana_service_name = os.getenv("HANA_SERVICE_NAME")
+
+    if hana_service_name:
+        hana_service = env.get_service(name=hana_service_name)
     else:
-        print(f"✅ Usando credenciales de servicio: {hana_service.name}")
+        hana_service = env.get_service(label="hana")
+
+    if hana_service:
         creds = hana_service.credentials
+        host = creds.get("host")
+        port = creds.get("port")
+        user = creds.get("user")
+        password = creds.get("password")
+    else:
+        # Solo para ejecución local sin VCAP_SERVICES
+        host = os.getenv("HANA_HOST") or os.getenv("host")
+        port = os.getenv("HANA_PORT") or os.getenv("port")
+        user = os.getenv("HANA_USER") or os.getenv("user")
+        password = os.getenv("HANA_PASSWORD") or os.getenv("password")
+
+    if not all([host, port, user, password]):
+        raise RuntimeError(
+            "No se pudieron obtener credenciales de HANA. "
+            "En Cloud Foundry revisa el binding del servicio; "
+            "en local revisa HANA_HOST, HANA_PORT, HANA_USER y HANA_PASSWORD."
+        )
 
     return dbapi.connect(
-        address=creds.get('host'),
-        port=int(creds.get('port')),
-        user=creds.get('user'),
-        password=creds.get('password'),
+        address=host,
+        port=int(port),
+        user=user,
+        password=password,
         encrypt="true",
         sslValidateCertificate="false"
     )
@@ -35,6 +49,7 @@ def load_data_to_hana(df):
     if df.empty:
         print("El DataFrame está vacío.")
         return
+
     mapeo = {
         "CLIENT_IP": "SOURCE_IP",
         "REQUEST_TIME_UTC": "TIMESTAMP",
@@ -44,12 +59,16 @@ def load_data_to_hana(df):
     
     # Aplicamos el renombre (ignore_errors=True por si ya tienen el nombre correcto)
     df = df.rename(columns=mapeo)
+
+    if "TIMESTAMP" in df.columns:
+        df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"], errors="coerce")
     # 1. ESQUEMA UNIFICADO (Debe ser idéntico en CREATE e INSERT)
     expected_columns = [
-        "EVENT_HASH", "ID", "SOURCE_IP", "DESTINATION_IP", "PROTOCOL", 
-        "SOURCE_PORT", "DESTINATION_PORT", "PACKET_SIZE", "FLAGS", 
-        "TIMESTAMP", "ANOMALY_SCORE", "LABEL", "LOCATION", 
-        "USER_AGENT", "HTTP_STATUS_CODE"
+        "EVENT_HASH", "HEADERS_CONTENT_TYPE", 
+        "SERVICE_ID", "LLM_PROVIDER", "LLM_MODEL_ID", 
+        "LLM_PROMPT_CATEGORY", "LLM_PROMPT", "LLM_TOTAL_TOKENS", 
+        "LLM_RESPONSE_TIME_MS", "LLM_COST_USD", "LLM_STATUS", "HTTP_STATUS_CODE",
+        "SOURCE_IP", "TIMESTAMP", "LOCATION"
     ]
 
     for col in expected_columns:
@@ -65,20 +84,22 @@ def load_data_to_hana(df):
     create_table_sql = f"""
     CREATE COLUMN TABLE "SOC_ANOMALY_LOGS" (
         "EVENT_HASH" NVARCHAR(64) PRIMARY KEY,
-        "ID" BIGINT,
-        "SOURCE_IP" NVARCHAR(45),
-        "DESTINATION_IP" NVARCHAR(45),
-        "PROTOCOL" NVARCHAR(10),
-        "SOURCE_PORT" INTEGER,
-        "DESTINATION_PORT" INTEGER,
-        "PACKET_SIZE" INTEGER,
-        "FLAGS" NVARCHAR(20),
         "TIMESTAMP" TIMESTAMP,
+        "SOURCE_IP" NVARCHAR(45),
+        "LOCATION" NVARCHAR(100),
+        "SERVICE_ID" NVARCHAR(50),
+        "LLM_PROVIDER" NVARCHAR(50),
+        "LLM_MODEL_ID" NVARCHAR(50),
+        "LLM_PROMPT" NCLOB,
+        "LLM_TOTAL_TOKENS" INTEGER,
+        "LLM_COST_USD" DOUBLE,
+        "LLM_RESPONSE_TIME_MS" INTEGER,
+        "HTTP_STATUS_CODE" INTEGER,
         "ANOMALY_SCORE" DOUBLE,
         "LABEL" NVARCHAR(20),
-        "LOCATION" NVARCHAR(100),
-        "USER_AGENT" NVARCHAR(256),
-        "HTTP_STATUS_CODE" INTEGER
+        "HEADERS_CONTENT_TYPE" NVARCHAR(100),
+        "LLM_PROMPT_CATEGORY" NVARCHAR(50),
+        "LLM_STATUS" NVARCHAR(50)
     )
     """
 

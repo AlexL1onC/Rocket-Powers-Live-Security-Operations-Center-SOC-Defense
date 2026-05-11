@@ -6,4 +6,9 @@ pyarrow
 hdbcli
 cfenv
 python-dotenv
-requests  # <--- AGREGA ESTA LÍNEA
+requests
+scikit-learn
+joblib
+dbapi
+matplotlib
+Response

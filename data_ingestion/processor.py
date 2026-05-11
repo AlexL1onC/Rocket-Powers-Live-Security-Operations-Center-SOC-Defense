@@ -10,6 +10,60 @@ def clean_and_convert_to_parquet(json_file_path, parquet_output_path):
         data = json.load(f)
     
     df = pd.DataFrame(data)
+
+    ip_candidates = [
+        "client_ip",
+        "source_ip",
+        "src_ip",
+        "ip",
+        "remote_addr",
+        "remote_ip",
+        "clientIp",
+        "client_ip_address",
+        "x_forwarded_for",
+        "X-Forwarded-For",
+        "headers_x_forwarded_for"
+    ]
+
+    df["CLIENT_IP"] = None
+
+    for col in ip_candidates:
+        if col in df.columns:
+            temp_ip = df[col].replace(["", " ", "Unknown", "unknown", "None", "null", "NULL"], pd.NA)
+            if temp_ip.notna().sum() > 0:
+                df["CLIENT_IP"] = temp_ip.astype(str)
+                print(f"✅ CLIENT_IP tomado desde columna: {col}")
+                break
+
+    print("CLIENT_IP no nulos:", df["CLIENT_IP"].notna().sum())
+    print("CLIENT_IP ejemplos:", df["CLIENT_IP"].dropna().head(5).tolist())
+
+
+
+
+        # Normalizar fecha/hora del evento
+    timestamp_candidates = [
+        "request_time_utc",
+        "@timestamp",
+        "timestamp",
+        "event_timestamp",
+        "event_time",
+        "created_at"
+    ]
+
+    df["REQUEST_TIME_UTC"] = None
+
+    for col in timestamp_candidates:
+        if col in df.columns:
+            temp_ts = pd.to_datetime(df[col], errors="coerce", utc=False)
+            if temp_ts.notna().sum() > 0:
+                df["REQUEST_TIME_UTC"] = temp_ts
+                print(f"✅ TIMESTAMP tomado desde columna: {col}")
+                break
+
+    print("REQUEST_TIME_UTC no nulos:", pd.Series(df["REQUEST_TIME_UTC"]).notna().sum())
+    print("REQUEST_TIME_UTC min:", pd.Series(df["REQUEST_TIME_UTC"]).min())
+    print("REQUEST_TIME_UTC max:", pd.Series(df["REQUEST_TIME_UTC"]).max())
     
     # 2. LIMPIEZA CRÍTICA
     print("Iniciando limpieza de datos...")
@@ -30,11 +84,17 @@ def clean_and_convert_to_parquet(json_file_path, parquet_output_path):
     # --- NUEVO PASO: MAPEO PARA SAP HANA ---
     print("Estandarizando columnas para SAP HANA...")
     
+    # Crear columna estándar de tiempo antes del rename
+    if "request_time_utc" in df.columns:
+        df["REQUEST_TIME_UTC"] = pd.to_datetime(df["request_time_utc"], errors="coerce")
+    elif "@timestamp" in df.columns:
+        df["REQUEST_TIME_UTC"] = pd.to_datetime(df["@timestamp"], errors="coerce")
+    else:
+        df["REQUEST_TIME_UTC"] = None
+
     # Mapeamos los nombres del JSON (izquierda) a los de tu DDL en HANA (derecha)
     column_mapping = {
         "event_hash": "EVENT_HASH",
-        "request_time_utc": "REQUEST_TIME_UTC",
-        "client_ip": "CLIENT_IP",
         "region_name": "REGION_NAME",
         "service_id": "SERVICE_ID",
         "llm_provider": "LLM_PROVIDER",
@@ -45,7 +105,8 @@ def clean_and_convert_to_parquet(json_file_path, parquet_output_path):
         "llm_response_time_ms": "LLM_RESPONSE_TIME_MS",
         "llm_cost_usd": "LLM_COST_USD",
         "llm_status": "LLM_STATUS",
-        "http_status_code": "HTTP_STATUS_CODE"
+        "http_status_code": "HTTP_STATUS_CODE",
+        "headers_content_type": "HEADERS_CONTENT_TYPE"
     }
     
     # Renombramos las que existan

@@ -1,98 +1,204 @@
-# Rocket-Powers-Live-Security-Operations-Center-SOC-Defense
-Repositorio para el SAP Hackathon
+# Rocket Powers SOC Defense
+
+Sistema SOC en tiempo real para detectar anomalías en logs de uso de LLMs y escalar amenazas probables mediante la API del hackathon SAP.
+
+## Resumen
+
+Rocket Powers SOC Defense implementa un pipeline de defensa operacional para monitorear eventos relacionados con servicios LLM. La solución consume logs desde la API del reto, normaliza los datos, los almacena en SAP HANA Cloud, ejecuta un modelo de detección de anomalías y escala únicamente eventos con señales adicionales de riesgo.
+
+El sistema no envía una alerta por cada anomalía. Primero detecta desviaciones estadísticas y después aplica un motor SOC de severidad para reducir falsos positivos y evitar alert fatigue.
+
+## Diferenciador
+
+La solución no es solo un notebook de machine learning. Es un sistema desplegado de extremo a extremo:
+
+- Extracción automática cada 30 minutos desde la API del reto.
+- Backend FastAPI desplegado en SAP BTP Cloud Foundry.
+- Persistencia de logs en SAP HANA Cloud.
+- Feature engineering en producción.
+- Modelo no supervisado de detección de anomalías.
+- Motor de severidad basado en score y señales de riesgo.
+- Envío automático de alertas mediante POST a la API del concurso.
+- Endpoints de diagnóstico para monitoreo, calibración y análisis forense.
+
+## Arquitectura
+
+```text
+SAP Hackathon Logs API
+        ↓
+FastAPI Scheduler
+        ↓
+Data Extraction
+        ↓
+Processor / Feature Engineering
+        ↓
+SAP HANA Cloud
+        ↓
+Isolation Forest Anomaly Detection
+        ↓
+Risk Context + Severity Engine
+        ↓
+Alert Decision Engine
+        ↓
+SAP Alert API
+        ↓
+Forensic Reporting / Dashboard
+```
+
+## Tech Stack
+
+- Python
+- FastAPI
+- SAP BTP Cloud Foundry
+- SAP HANA Cloud
+- hdbcli
+- pandas / NumPy
+- scikit-learn
+- APScheduler
+- REST APIs
+
+## Pipeline
+
+1. El scheduler ejecuta el ciclo SOC cada 30 minutos.
+2. Se extraen logs desde la API del hackathon.
+3. Los datos se limpian, normalizan y convierten a estructura tabular.
+4. Los registros se cargan en SAP HANA Cloud mediante UPSERT.
+5. Se generan features temporales, operativas y de comportamiento LLM.
+6. El modelo detecta anomalías.
+7. El motor SOC asigna severidad: Low, Medium o High.
+8. Solo eventos con señales suficientes se escalan como alertas.
+9. Las alertas se envían mediante POST a la API del concurso.
+
+## Feature Engineering
+
+El sistema construye variables como:
+
+- `prompt_length`
+- `token_density`
+- `latency_per_token`
+- `cost_intensity`
+- `hour`
+- `day_of_week`
+- `is_night`
+- `is_weekend`
+- `requests_per_minute`
+- `errors_per_minute`
+- `avg_latency_per_minute`
+- `tokens_per_minute`
+- variables categóricas codificadas para proveedor, modelo, estatus y categoría del prompt
+
+## Modelo
+
+Se usa un modelo no supervisado basado en Isolation Forest para identificar eventos que se desvían del comportamiento normal.
+
+El modelo no se presenta como un clasificador absoluto de ataques. Su objetivo es reducir el volumen de revisión y detectar patrones anómalos. Después, un motor SOC correlaciona esas anomalías con señales adicionales de riesgo.
+
+## Motor de Severidad
+
+La severidad se calcula usando:
+
+- Score de anomalía.
+- Errores HTTP.
+- Estatus LLM como error, timeout o failure.
+- Alto volumen de tokens.
+- Alta latencia.
+- Palabras sospechosas en prompts.
+
+Reglas generales:
+
+```text
+Low:
+  anomalía débil o sin señales suficientes de riesgo.
+
+Medium:
+  score anómalo + señal operativa de riesgo.
+
+High:
+  score crítico + señal operativa de riesgo.
+```
+
+## Estrategia Anti Alert Fatigue
+
+No todas las anomalías se envían por API. Todas quedan disponibles para análisis forense, pero solo se escalan amenazas probables.
+
+Criterios de escalamiento:
+
+- Eventos High siempre se escalan.
+- Eventos Medium se escalan cuando tienen señal de riesgo.
+- Eventos Low solo se escalan si tienen evidencia explícita de prompt sospechoso.
+- Se limita el envío a un máximo configurable de alertas por ciclo.
+
+Variables relevantes:
+
+```env
+MAX_ALERTS_PER_CYCLE=5
+ALERT_SCORE_THRESHOLD=-0.05
+```
+
+## Resultados Observados
+
+```text
+Total logs procesados:        2,810,476
+Eventos normales:             26,617
+Anomalías detectadas:         546,828
+Eventos pendientes:           2,237,031
+Score mínimo observado:       -0.0588499
+Score promedio observado:     -0.0096964
+Anomalías con score <= -0.05: 35
+```
+
+Resumen de señales de riesgo:
+
+```text
+HTTP risk:       79,509
+Status risk:     54,535
+High tokens:     31,943
+High latency:    60,753
+```
+
+Estos números muestran que el modelo identifica anomalías a gran escala, pero que el motor SOC reduce el ruido y escala solo eventos priorizados.
+
+## Endpoints Principales
+
+```text
+GET  /
+GET  /debug_hana_connection
+GET  /soc_summary
+GET  /anomaly_risk_summary
+GET  /anomaly_score_distribution
+GET  /top_anomalies
+GET  /export_datos_urgente
+```
+
+## Variables de Entorno
+
+Crear un archivo `.env` local o configurar variables en Cloud Foundry
 
 
+## Despliegue
 
+La aplicación se despliega en SAP BTP Cloud Foundry:
 
-Pipeline de Arquitectura: GenAI SOC Real-Time Defense
-Este pipeline describe el flujo desde el aprovisionamiento de infraestructura hasta la ingesta de datos en tiempo real en SAP BTP.
+```bash
+cf push
+```
 
-1. Capa de Infraestructura y Gobernanza (Control Plane)
-Suscripción: Activación de SAP HANA Cloud (Plan tools) para gestión vía Central Dashboard.
+Para revisar logs:
 
-RBAC (Security): Asignación de la colección de roles SAP HANA Cloud Administrator al usuario de la Subcuenta para desbloquear privilegios de aprovisionamiento.
+```bash
+cf logs rocket-powers-soc
+```
 
-Entorno de Ejecución: Configuración de Cloud Foundry Runtime y creación del espacio lógico (dev) para el despliegue del backend.
+Para revisar variables:
 
-2. Capa de Persistencia (SAP HANA Cloud)
-Motor de Base de Datos: Creación de instancia SAP HANA Database (hana-free).
+```bash
+cf env rocket-powers-soc
+```
 
-Networking: Configuración de reglas de firewall permitiendo All IP addresses para garantizar conectividad del backend externo y herramientas locales.
+## Estado Actual
 
-Advanced Features: Habilitación de Natural Language Processing (NLP) para soporte nativo de Vector Engine (almacenamiento y búsqueda de similitud de embeddings de prompts).
+La solución se encuentra desplegada y operando en SAP BTP Cloud Foundry. El sistema ejecuta ciclos automáticos de ingesta, procesamiento, almacenamiento, detección y alertamiento.
 
-3. Capa de Integración y Abstracción (HDI)
-Instance Mapping: Mapeo lógico de la instancia física de HANA hacia la Organización y Espacio de Cloud Foundry.
+## Equipo
 
-Contenedor HDI: Creación de servicio SAP HANA Schemas & HDI Containers (Plan hdi-shared). Esto aísla el esquema del proyecto y permite la gestión de artefactos de base de datos de forma declarativa.
-
-Credenciales: Generación de Service Keys para la extracción de metadatos de conexión (host, port, user, password) requeridos por el driver hdbcli.
-
-4. Modelado de Datos y Backend (Data Engineering)
-Esquema Físico: Definición de tablas columnares optimizadas para series de tiempo y vectores en SAP HANA Database Explorer.
-
-Pipeline de Ingesta (Python): * Consumo asíncrono de API SOC.
-
-Evaluación In-Memory: Detección de anomalías inmediata para minimizar el MTTD (Mean Time To Detect).
-
-Micro-batching: Inserción eficiente en HANA mediante executemany para reducir el overhead de red.
-
-
-
-
-
-☁️ Configuración "Cloud-Ready" (Gestión de Credenciales)
-Para garantizar la seguridad y escalabilidad del SOC, este backend sigue la metodología Twelve-Factor App. Estrictamente, ninguna credencial o IP está "hardcodeada" en el código fuente. El despliegue está diseñado para consumir las variables de entorno de infraestructura que SAP BTP Cloud Foundry inyecta dinámicamente (VCAP_SERVICES).
-
-1. Requisitos de Entorno
-Para que el script de Python sea agnóstico (funcione igual en tu computadora local durante el desarrollo y en la nube de SAP en producción), utilizamos las librerías cfenv y python-dotenv:
-
-Bash
-pip install cfenv python-dotenv hdbcli
-2. Desarrollo Local (Simulación de BTP)
-Para probar el código localmente sin alterar la lógica de producción, crea un archivo .env en la raíz del proyecto. (Nota: Este archivo está en el .gitignore y jamás debe subirse al repositorio).
-
-Dentro del .env, pega el JSON exacto de la Service Key que generaste en el contenedor HDI de SAP HANA, asignándolo a la variable VCAP_SERVICES:
-
-Fragmento de código
-# Archivo: .env
-VCAP_SERVICES={"hana": [{"credentials": {"host": "tu-host.hana.ondemand.com", "password": "tu-password", "port": "443", "user": "tu-usuario"}}]}
-3. Implementación en Python
-El siguiente patrón de diseño permite que el backend busque primero las credenciales inyectadas por el entorno de SAP BTP y, si no las encuentra (es decir, estás corriendo el script en tu laptop), recurra al archivo local .env.
-
-Python
-import os
-from dotenv import load_dotenv
-from cfenv import AppEnv
-from hdbcli import dbapi
-
-# 1. Cargar variables locales si existen (Ignorado en la nube)
-load_dotenv()
-
-# 2. Inicializar el entorno de Cloud Foundry
-env = AppEnv()
-
-def get_hana_connection():
-    # 3. Buscar el servicio enlazado de HANA (HDI Container)
-    hana_service = env.get_service(label='hana')
-    
-    if not hana_service:
-        raise ValueError("Error Crítico: No se encontraron las credenciales de SAP HANA en VCAP_SERVICES.")
-    
-    creds = hana_service.credentials
-
-    # 4. Establecer conexión segura in-memory
-    try:
-        conn = dbapi.connect(
-            address=creds['host'],
-            port=int(creds['port']),
-            user=creds['user'],
-            password=creds['password'],
-            encrypt="true",
-            sslValidateCertificate="false" 
-        )
-        return conn
-    except Exception as e:
-        print(f"Falla de Ingesta SOC: Imposible conectar a la base de datos columnar. Detalle: {e}")
-        raise
-Ventaja Arquitectónica: Cuando subas este código a BTP usando cf push, no tendrás que cambiar ni una sola línea de código. La plataforma enlazará el backend con la base de datos automáticamente.
+Rocket Powers
