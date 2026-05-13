@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+apscheduler
+pandas
+pyarrow
+hdbcli
+cfenv
+python-dotenv
+requests
+scikit-learn
+joblib
+dbapi
+matplotlib
+Response

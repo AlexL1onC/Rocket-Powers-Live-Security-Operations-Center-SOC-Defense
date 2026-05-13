@@ -1,0 +1,7 @@
+SAP_env/
+shared_data/
+__pycache__/
+.env
+.git/
+venv_sap/
+Notebooks/datos_entrenamiento.csv

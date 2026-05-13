@@ -1,0 +1,9 @@
+applications:
+- name: rocket-powers-soc
+  path: .
+  memory: 512M
+  buildpacks:
+    - python_buildpack
+  command: uvicorn main:app --host 0.0.0.0 --port $PORT
+  services:
+    - HANA_SOC_Schemas_Containers  # <--- Asegúrate que este nombre sea igual al de tu instancia HANA

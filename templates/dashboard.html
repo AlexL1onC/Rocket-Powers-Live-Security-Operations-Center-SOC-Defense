@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard SOC - Rocket Powers</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/soc_dashboard.css">
+</head>
+
+<body>
+<div class="app-shell">
+
+    <!-- =========================
+         IZQUIERDA: MENÚ DE NAVEGACIÓN
+    ========================== -->
+    <aside class="nav-sidebar">
+        <div class="nav-header">
+            <div class="nav-kicker">Rocket Powers</div>
+            <h2>SOC Dashboard</h2>
+        </div>
+
+        <nav class="nav-menu">
+            <button onclick="scrollToSection('sec-summary')">1. Resumen SOC</button>
+            <button onclick="scrollToSection('sec-funnel')">2. Embudo SOC</button>
+            <button onclick="scrollToSection('sec-security')">3. Seguridad</button>
+            <button onclick="scrollToSection('sec-operational')">4. Contexto operativo</button>
+            <button onclick="scrollToSection('sec-classification')">5. Clasificación</button>
+            <button onclick="scrollToSection('sec-forensic')">6. Vista forense</button>
+        </nav>
+
+        <div class="nav-footer">
+            <div class="nav-status-dot"></div>
+            <span>SOC activo</span>
+        </div>
+    </aside>
+
+    <!-- DERECHA: DASHBOARD -->
+    <main class="dashboard-main">
+        <div class="dashboard-scroll" id="dashboardScroll">
+
+            <header>
+                <h1>Dashboard SOC Defense - Rocket Powers</h1>
+                <p>
+                    Monitoreo en tiempo real de anomalías en tráfico de LLMs. La vista principal está enfocada en
+                    <strong>alertas de seguridad</strong>, mientras que las anomalías operativas se conservan como contexto forense.
+                </p>
+            </header>
+
+            <div class="container">
+                <div class="refresh-row">
+                    <div id="loadStatus" class="status-pill">Cargando datos del SOC...</div>
+                    <button class="btn" onclick="loadDashboard()">Actualizar dashboard</button>
+                </div>
+
+                <div class="note security-note">
+                    <strong>Enfoque principal del dashboard:</strong><br>
+                    En la vista de seguridad, el objetivo no es analizar latencia o tokens, sino identificar eventos con señales de riesgo:
+                    <strong>HTTP 401</strong> por autenticación fallida,
+                    <strong>HTTP 403</strong> por acceso prohibido,
+                    <strong>HTTP 429</strong> por rate limit o posible abuso,
+                    y prompts con contenido sospechoso.
+                    Las gráficas de latencia y tokens se conservan como contexto operativo secundario.
+                </div>
+
+                <div class="card filter-card">
+                    <h3>Filtros de investigación SOC</h3>
+
+                    <div class="filters">
+                        <div class="filter-group">
+                            <label>Tipo de anomalía</label>
+                            <select id="anomalyTypeFilter">
+                                <option value="security" selected>Solo seguridad</option>
+                                <option value="operational">Solo operativas</option>
+                                <option value="all">Todas</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Ventana de tiempo</label>
+                            <select id="hoursFilter">
+                                <option value="12">Últimas 12 horas</option>
+                                <option value="24">Últimas 24 horas</option>
+                                <option value="72" selected>Últimas 72 horas</option>
+                                <option value="168">Últimos 7 días</option>
+                            </select>
+                        </div>
+
+                        <button class="btn" onclick="loadDashboard()">Aplicar filtros</button>
+                    </div>
+
+                    <div class="legend-note">
+                        Recomendación para demo: usar <strong>Solo seguridad</strong>.
+                        Si no aparecen alertas en la ventana seleccionada, cambia a <strong>Todas</strong> para mostrar el contexto forense.
+                    </div>
+                </div>
+
+                <div class="note">
+                    <strong>Cómo leer este dashboard:</strong><br>
+                    1. Las líneas muestran el comportamiento real observado en los logs almacenados en SAP HANA.<br>
+                    2. Los puntos muestran anomalías detectadas por el modelo ML según el filtro seleccionado.<br>
+                    3. El filtro <strong>Solo seguridad</strong> muestra únicamente anomalías que cumplen criterios de seguridad.<br>
+                    4. El filtro <strong>Solo operativas</strong> muestra anomalías de rendimiento o confiabilidad que no se escalan a la API de seguridad.
+                </div>
+
+                <h2 class="section-title" id="sec-summary">1. Resumen ejecutivo del SOC</h2>
+
+                <div class="grid grid-4">
+                    <div class="card">
+                        <h3>Eventos en ventana</h3>
+                        <div class="metric" id="eventsWindow">-</div>
+                        <div class="submetric">Eventos cargados para la ventana visual analizada</div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Anomalías detectadas</h3>
+                        <div class="metric" id="anomaliesWindow">-</div>
+                        <div class="submetric">Desviaciones detectadas por el modelo ML</div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Anomalías visibles</h3>
+                        <div class="metric" id="visibleWindow">-</div>
+                        <div class="submetric">Anomalías mostradas según el filtro seleccionado</div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Alertas de seguridad</h3>
+                        <div class="metric" id="securityWindow">-</div>
+                        <div class="submetric">Eventos con evidencia de seguridad elegibles para envío a la API</div>
+                    </div>
+                </div>
+
+                <h2 class="section-title" id="sec-funnel">2. Embudo de decisión del SOC</h2>
+
+                <div class="card">
+                    <div class="pipeline">
+                        <div class="pipeline-step step-normal">
+                            <h4>Eventos totales</h4>
+                            <div class="value" id="funnelEvents">-</div>
+                            <p>Registros de tráfico LLM extraídos desde la API del reto y almacenados en SAP HANA.</p>
+                        </div>
+
+                        <div class="pipeline-step step-model">
+                            <h4>Anomalías ML</h4>
+                            <div class="value" id="funnelAnomalies">-</div>
+                            <p>Eventos que se desvían estadísticamente usando variables de uso, latencia, tokens y estado.</p>
+                        </div>
+
+                        <div class="pipeline-step step-operational">
+                            <h4>Operativas</h4>
+                            <div class="value" id="funnelOperational">-</div>
+                            <p>Anomalías por latencia, timeouts, errores o consumo elevado. Se visualizan para análisis forense.</p>
+                        </div>
+
+                        <div class="pipeline-step step-security">
+                            <h4>Seguridad</h4>
+                            <div class="value" id="funnelSecurity">-</div>
+                            <p>Anomalías con señales de seguridad como prompt injection, acceso no autorizado o abuso de tráfico.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="section-title" id="sec-security">3. Vista principal de seguridad</h2>
+
+                <div class="grid grid-2">
+                    <div class="card chart-card">
+                        <h3>Eventos de seguridad por tiempo</h3>
+                        <canvas id="securityTimelineChart"></canvas>
+                        <div class="legend-note">
+                            Esta gráfica muestra cuántos eventos fueron clasificados como seguridad por ventana de tiempo.
+                            Incluye accesos no autorizados, rate limit o patrones de abuso.
+                        </div>
+                    </div>
+
+                    <div class="card chart-card">
+                        <h3>Distribución de códigos HTTP de seguridad</h3>
+                        <canvas id="securityHttpChart"></canvas>
+                        <div class="legend-note">
+                            HTTP 401 y 403 indican posibles problemas de autenticación o autorización.
+                            HTTP 429 indica rate limit o posible abuso volumétrico.
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="section-title" id="sec-operational">4. Contexto operativo: datos reales vs anomalías</h2>
+
+                <div class="note">
+                    <strong>Nota sobre eventos de seguridad:</strong><br>
+                    En la vista de seguridad, algunos eventos pueden aparecer con tokens y latencia en cero porque fueron bloqueados antes de llegar al modelo LLM.
+                    Para estos casos, la evidencia principal es el código HTTP, la IP, el servicio y la frecuencia del evento.
+                </div>
+
+                <div class="grid grid-2">
+                    <div class="card chart-card">
+                        <h3>Tendencia real de latencia vs anomalías</h3>
+                        <canvas id="latencyChart"></canvas>
+                        <div class="legend-note">
+                            La línea representa la latencia promedio observada. Los puntos muestran eventos anómalos según el filtro seleccionado.
+                        </div>
+                    </div>
+
+                    <div class="card chart-card">
+                        <h3>Tendencia real de tokens vs anomalías</h3>
+                        <canvas id="tokensChart"></canvas>
+                        <div class="legend-note">
+                            La línea representa el uso promedio de tokens. Los puntos muestran consumos anómalos según el filtro seleccionado.
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="section-title" id="sec-classification">5. Clasificación: operación vs seguridad</h2>
+
+                <div class="grid grid-2">
+                    <div class="card chart-card">
+                        <h3>Distribución por tipo de anomalía</h3>
+                        <canvas id="typeChart"></canvas>
+                        <div class="legend-note">
+                            Esta gráfica muestra la separación entre anomalías operativas y alertas de seguridad dentro de la ventana seleccionada.
+                        </div>
+                    </div>
+
+                    <div class="card chart-card">
+                        <h3>Distribución del score de anomalía</h3>
+                        <canvas id="scoreChart"></canvas>
+                        <div class="legend-note">
+                            Los scores más negativos representan eventos más inusuales. El motor SOC agrega reglas de seguridad para decidir si se escala.
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="section-title" id="sec-forensic">6. Vista forense: puntos anómalos principales</h2>
+
+                <div class="note">
+                    <strong>Interpretación de la tabla:</strong>
+                    La columna <strong>Tipo</strong> indica si el evento es operativo o de seguridad.
+                    La columna <strong>Evidencia security</strong> muestra la razón por la que una anomalía puede ser considerada de seguridad.
+                    La columna <strong>Contexto operativo</strong> muestra señales complementarias como timeout, latencia alta o tokens elevados.
+                    Un estado <strong>success</strong> o <strong>timeout</strong> no se considera seguridad por sí solo.
+                </div>
+
+                <div class="card">
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha/hora</th>
+                                    <th>Tipo</th>
+                                    <th>Proveedor</th>
+                                    <th>Servicio</th>
+                                    <th>IP origen</th>
+                                    <th>Ubicación</th>
+                                    <th>Modelo</th>
+                                    <th>Estado</th>
+                                    <th>HTTP</th>
+                                    <th>Tokens</th>
+                                    <th>Latencia</th>
+                                    <th>Score</th>
+                                    <th>Evidencia security</th>
+                                    <th>Contexto operativo</th>
+                                    <th>Prompt</th>
+                                </tr>
+                            </thead>
+                            <tbody id="anomalyTable">
+                                <tr><td colspan="15">Cargando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    Rocket Powers SOC Defense — El modelo ML detecta desviaciones; el motor SOC decide si el evento es operativo o relevante para seguridad antes de escalarlo.
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <aside id="agentSidebar" class="agent-sidebar">
+        <div class="sidebar-header">
+            <div>
+                <div class="sidebar-kicker">SOC Copilot</div>
+                <h2>Agente SOC con IA</h2>
+            </div>
+            <button class="sidebar-toggle" onclick="toggleAgentSidebar()" id="sidebarToggleBtn">⮞</button>
+        </div>
+
+        <div class="sidebar-collapsed-icon">🤖</div>
+
+<div class="sidebar-content">
+    <div class="legend-note">
+        Este agente usa IA generativa con contexto recuperado desde SAP HANA.
+        Interpreta alertas, diferencia eventos operativos de seguridad y recomienda acciones de investigación.
+    </div>
+
+    <pre id="assistantAnswer" class="assistant-answer">Haz una pregunta para iniciar el análisis SOC.</pre>
+
+    <div class="assistant-input-section">
+        <div class="assistant-box">
+            <input
+                id="assistantQuestion"
+                type="text"
+                placeholder="Ej. ¿Qué alertas de seguridad debo revisar primero?"
+                class="assistant-input"
+            />
+            <button class="btn full-width" onclick="askAssistant()">Preguntar</button>
+        </div>
+
+        <div class="assistant-quick-actions">
+            <button class="btn" onclick="quickAsk('Dame un resumen ejecutivo del estado del SOC')">Resumen SOC</button>
+            <button class="btn" onclick="quickAsk('Qué alertas de seguridad debo revisar primero y por qué')">Prioridad seguridad</button>
+            <button class="btn" onclick="quickAsk('Qué significa HTTP 401, 403 y 429 en este contexto')">Explicar HTTP</button>
+            <button class="btn" onclick="quickAsk('Qué acciones recomiendas para investigar estos eventos')">Recomendaciones</button>
+            <button class="btn" onclick="quickAsk('Por qué un timeout o success no es security por sí solo')">Timeout ≠ Security</button>
+            <button class="btn" onclick="quickAsk('Cómo funciona el modelo y la clasificación SOC')">Modelo + SOC</button>
+        </div>
+    </div>
+</div>
+    </aside>
+
+</div>
+
+<script src="/static/js/soc_dashboard.js"></script>
+</body>
+</html>
