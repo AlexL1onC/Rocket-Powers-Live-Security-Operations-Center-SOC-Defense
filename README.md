@@ -2,9 +2,12 @@
 
 Sistema SOC en tiempo real para monitorear, detectar y priorizar amenazas en tráfico de LLMs usando **SAP HANA Cloud**, **FastAPI**, **Machine Learning**, un **motor SOC interpretable** y un **Agente SOC con IA**.
 
-> Enlace principal para jueces y revisores: abrir el dashboard desplegado en SAP BTP Cloud Foundry.
+> Enlace principal para abrir el dashboard desplegado en SAP BTP Cloud Foundry.
 >
 > **Dashboard:** `https://rocket-powers-soc.cfapps.us10-001.hana.ondemand.com/dashboard`
+>
+> **Link de Video del Demo:** `https://youtu.be/dN5IVqZOImc`
+>
 
 ---
 
