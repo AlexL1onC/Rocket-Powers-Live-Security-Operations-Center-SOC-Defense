@@ -65,6 +65,12 @@ El diferenciador principal es la separación entre **detección de anomalías** 
 
 ## 4. Arquitectura general
 
+<p align="center">
+  <img src="README_assets/soc_architecture.png"
+       alt="SOC Defense Architecture"
+       width="1200">
+</p>
+
 ```text
 SAP Hackathon Logs API
         ↓
