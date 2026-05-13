@@ -143,11 +143,13 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-SAP_env/
+venv_sap/
 
 # Datos
 shared_data/processed_logs.parquet
 shared_data/raw_logs.json
+
+models/soc_anomaly_ensemble.joblib
 
 
 # Spyder project settings
